@@ -6,5 +6,10 @@ Fixeu-vos que a la carpeta principal també hi teniu el fitxer **stopwordscat.tx
 
 També podeu trobar l'enunciat detallat al document **practicaActors.pdf** i a la carpeta **primeraPartPractica** hi trobareu l'enunciat i els fitxers de la primera part de la pràctica.
 
-Per fer-ho correctament us recomano que **feu un fork** des del vostre usuari.
+Per fer-ho correctament us recomano que aneu al **use this template** i creeu una còpia amb visibilitat **privada** amb el vostre nom de repositori.
+Pel lliurament em podeu donar permisos a mi.
+
+
+
+
 

@@ -15,6 +15,9 @@ import scala.language.postfixOps
 // - tractaxml utilitza un "protoParser" per la viquipèdia i
 // exampleMapreduce usa el MapReduce
 
+object fitxers extends App{
+  ProcessListStrings.mostrarTextDirectori("primeraPartPractica")
+}
 
 object tractaxml extends App {
 

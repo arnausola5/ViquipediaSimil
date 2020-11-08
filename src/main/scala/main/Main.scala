@@ -9,11 +9,31 @@ import mapreduce._
 
 import scala.concurrent.Await
 import scala.concurrent.duration._
+import scala.io.Source
 import scala.language.postfixOps
 
 // Tenim dos objectes executables
 // - tractaxml utilitza un "protoParser" per la viquipèdia i
 // exampleMapreduce usa el MapReduce
+
+object primeraPart extends App {
+
+  val aliceWonderland = scala.io.Source.fromFile("part1_files/pg11.txt").getLines().mkString(" ")
+  val frequenciaParaules = freq(aliceWonderland)
+  println("Num de paraules: " + frequenciaParaules.foldLeft(0)(_+_._2))
+  println("Diferents: " + frequenciaParaules.length)
+  println(frequenciaParaules.sortWith(_._2>_._2).take(10))
+
+  val stopWords = scala.io.Source.fromFile("part1_files/english-stop.txt").getLines().toList
+  println(nonstopfreq(aliceWonderland, stopWords).sortWith(_._2>_._2).take(10))
+
+
+  def freq(text: String):List[(String, Int)] =
+    text.replaceAll("[^a-zA-Z ]", " ").split(" +").groupBy(m => m.toLowerCase()).map(m => (m._1, m._2.length)).toList
+
+  def nonstopfreq(text: String, stopWords: List[String]):List[(String, Int)] =
+    text.replaceAll("[^a-zA-Z ]", " ").toLowerCase().split(" +").filterNot(stopWords.contains(_)).groupBy(m => m).map(m => (m._1, m._2.length)).toList
+}
 
 object fitxers extends App{
   ProcessListStrings.mostrarTextDirectori("primeraPartPractica")

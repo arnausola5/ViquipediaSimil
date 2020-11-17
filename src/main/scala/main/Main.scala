@@ -19,13 +19,20 @@ import scala.language.postfixOps
 object primeraPart extends App {
 
   val aliceWonderland = scala.io.Source.fromFile("part1_files/pg11.txt").getLines().mkString(" ")
-  val frequenciaParaules = freq(aliceWonderland)
+  /* val frequenciaParaules = freq(aliceWonderland)
   println("Num de paraules: " + frequenciaParaules.foldLeft(0)(_+_._2))
   println("Diferents: " + frequenciaParaules.length)
   println(frequenciaParaules.sortWith(_._2>_._2).take(10))
 
   val stopWords = scala.io.Source.fromFile("part1_files/english-stop.txt").getLines().toList
-  println(nonstopfreq(aliceWonderland, stopWords).sortWith(_._2>_._2).take(10))
+  println(nonstopfreq(aliceWonderland, stopWords).sortWith(_._2>_._2).take(10)) */
+
+  // paraulafreqfreq(aliceWonderland)
+
+  // val ngrams = ngrames(aliceWonderland, 3)
+  // println(ngrams.sortWith(_._2>_._2).take(10))
+
+  cosinesim(aliceWonderland, aliceWonderland)
 
 
   def freq(text: String):List[(String, Int)] =
@@ -33,6 +40,28 @@ object primeraPart extends App {
 
   def nonstopfreq(text: String, stopWords: List[String]):List[(String, Int)] =
     text.replaceAll("[^a-zA-Z ]", " ").toLowerCase().split(" +").filterNot(stopWords.contains(_)).groupBy(m => m).map(m => (m._1, m._2.length)).toList
+
+  def paraulafreqfreq(text: String) = {
+    val frequencies = freq(text).groupBy(_._2).map(n => (n._1, n._2.length)).toList.sortBy(_._1)
+    for(freq <- frequencies.take(10)) println(freq._2 + " paraules apareixen " + freq._1 + " vegades")
+    for(freq <- frequencies.drop(frequencies.length-5)) println(freq._2 + " paraules apareixen " + freq._1 + " vegades")
+  }
+
+  def ngrames(text: String, n: Int): List[(String, Int)] =
+    text.replaceAll("[^a-zA-Z ]", " ").split(" +").sliding(n).map(n => n.mkString(" ")).toList.groupBy(m => m.toLowerCase()).map(m => (m._1, m._2.length)).toList
+
+  def cosinesim(text1: String, text2: String) = {
+    val freq1 = freq(text1).sortWith(_._2>_._2)
+    val freq1Normalitzat = freq1.map(m => (m._1, m._2.toFloat/freq1.take(1)(0)._2)).sortBy(_._1)
+    val freq2 = freq(text2).sortWith(_._2>_._2)
+    val freq2Normalitzat = freq2.map(m => (m._1, m._2/freq2.take(1)(0)._2)).sortBy(_._1)
+
+    var i = 0
+    var j = 0
+    while(i < freq1Normalitzat.length && j < freq2Normalitzat.length) {
+
+    }
+  }
 }
 
 object fitxers extends App{

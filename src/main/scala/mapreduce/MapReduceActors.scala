@@ -92,7 +92,14 @@ class MapReduce[K1,V1,K2,V2,V3](
 
       // Posar les anotacions de tipus aquí no és necessari però ajuda a llegir que
       // a cada mapper li enviem una clau de tipus K1 i una llista de valors de tipus V1
-      for(i<- 0 until nmappers) mappers(i) ! toMapper(input(i)._1:K1, input(i)._2: List[V1])
+
+      // Aquesta versi és quadràtica perquè l'accés a input(i) te cost i mentre
+      // que la versió de sota amb el zipWithIndex senzillament recorre l'input un cop
+      // linealment. AQUEST CANVI ÉS CLAU EN EL RENDIMENT
+      //for(i<- 0 until nmappers) mappers(i) ! toMapper(input(i)._1:K1, input(i)._2: List[V1])
+
+      for(((p1,p2),i)<-input.zipWithIndex) mappers(i % nmappers) ! toMapper(p1: K1, p2 :List[V1])
+
       // Per tant, alternativament...
       // for(i<- 0 until nmappers) mappers(i) ! toMapper(input(i)._1, input(i)._2)
 

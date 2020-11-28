@@ -7,9 +7,9 @@ import akka.pattern.ask
 import akka.util.Timeout
 import mapreduce._
 
+import scala.collection.immutable.ListMap
 import scala.concurrent.Await
 import scala.concurrent.duration._
-import scala.io.Source
 import scala.language.postfixOps
 
 // Tenim dos objectes executables
@@ -18,13 +18,13 @@ import scala.language.postfixOps
 
 object primeraPart extends App {
 
-  val aliceWonderland = scala.io.Source.fromFile("part1_files/pg11.txt").getLines().mkString(" ")
+  val aliceWonderland = ProcessListStrings.llegirFitxer("primeraPartPractica/pg11.txt")
   /* val frequenciaParaules = freq(aliceWonderland)
   println("Num de paraules: " + frequenciaParaules.foldLeft(0)(_+_._2))
   println("Diferents: " + frequenciaParaules.length)
   println(frequenciaParaules.sortWith(_._2>_._2).take(10))
 
-  val stopWords = scala.io.Source.fromFile("part1_files/english-stop.txt").getLines().toList
+  val stopWords = ProcessListStrings.llegirFitxer("primeraPartPractica/english-stop.txt").split("\r\n").toList
   println(nonstopfreq(aliceWonderland, stopWords).sortWith(_._2>_._2).take(10)) */
 
   // paraulafreqfreq(aliceWonderland)
@@ -32,7 +32,7 @@ object primeraPart extends App {
   // val ngrams = ngrames(aliceWonderland, 3)
   // println(ngrams.sortWith(_._2>_._2).take(10))
 
-  val throughtLookingGlass = scala.io.Source.fromFile("part1_files/pg12.txt").getLines().mkString(" ")
+  val throughtLookingGlass = ProcessListStrings.llegirFitxer("primeraPartPractica/pg12.txt")
 
   println(cosinesim(aliceWonderland, throughtLookingGlass))
 
@@ -53,7 +53,7 @@ object primeraPart extends App {
     text.replaceAll("[^a-zA-Z ]", " ").split(" +").sliding(n).map(n => n.mkString(" ")).toList.groupBy(m => m.toLowerCase()).map(m => (m._1, m._2.length)).toList
 
   def cosinesim(text1: String, text2: String): Double = {
-    val stopWords = scala.io.Source.fromFile("part1_files/english-stop.txt").getLines().toList
+    val stopWords = ProcessListStrings.llegirFitxer("primeraPartPractica/english-stop.txt").split("\r\n").toList
 
     val freq1 = nonstopfreq(text1, stopWords).sortWith(_._2>_._2)
     val freq1Normalitzat = freq1.map(m => (m._1, m._2.toFloat/freq1.take(1)(0)._2)).sortBy(_._1)
@@ -69,6 +69,41 @@ object primeraPart extends App {
 
     producteScalar / (sumFreq1 * sumFreq2)
   }
+}
+
+object segonaPart extends App {
+
+  def prepararInput(n: Int): List[(String, List[String])] = {
+    val llistaFitxers = ProcessListStrings.getListOfFiles("viqui_files").take(n).map(f => (f.getName, ViquipediaParse.parseViquipediaFile(f.getPath).titol))
+
+    for ((nomFitxer, _) <- llistaFitxers) yield (nomFitxer, llistaFitxers.map(t => t._2))
+  }
+
+  // f té una referència de fitxer
+  def mappingReferencies(fitxer: String, llistaTitolsFitxers: List[String]): List[(String, Int)] = {
+    val referencies = ViquipediaParse.parseViquipediaFile("viqui_files/" + fitxer).refs
+    for(titol <- llistaTitolsFitxers) yield (titol, referencies.count(_.contains(titol)))
+  }
+
+  def reducingReferencies(fitxer: String, llistaReferencies: List[Int]): (String, Int) =
+    (fitxer, llistaReferencies.sum)
+
+
+  // main
+  val systema: ActorSystem = ActorSystem("sistema")
+  val paginesRellevants = systema.actorOf(Props(new MapReduce(prepararInput(5000),mappingReferencies,reducingReferencies, 10, 10)), name = "masterReferencies")
+
+  implicit val timeout = Timeout(10000 seconds)
+  var futureresResultPaginesRellevants = paginesRellevants ? mapreduce.MapReduceCompute()
+
+  println("Awaiting")
+  val paginesRellevantsResult:Map[String,Int] = Await.result(futureresResultPaginesRellevants,Duration.Inf).asInstanceOf[Map[String,Int]]
+
+  println("Results Obtained")
+
+  for(p <- paginesRellevantsResult) println(p)
+
+  systema.terminate()
 }
 
 object fitxers extends App{
@@ -133,7 +168,7 @@ object exampleMapreduce extends App {
 
 
   println("Creem l'actor MapReduce per fer el wordCount")
-  val wordcount = systema.actorOf(Props(new MapReduce(fitxers,mappingWC,reducingWC )), name = "mastercount")
+  val wordcount = systema.actorOf(Props(new MapReduce(fitxers,mappingWC,reducingWC, 4, 4)), name = "mastercount")
 
   // Els Futures necessiten que se'ls passi un temps d'espera, un pel future i un per esperar la resposta.
   // La idea és esperar un temps limitat per tal que el codi no es quedés penjat ja que si us fixeu preguntar

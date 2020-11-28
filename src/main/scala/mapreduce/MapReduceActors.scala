@@ -43,12 +43,14 @@ class Reducer[K2,V2,V3](reducing:(K2,List[V2])=> (K2,V3)) extends Actor {
 class MapReduce[K1,V1,K2,V2,V3](
                                  input:List[(K1,List[V1])],
                                  mapping:(K1,List[V1]) => List[(K2,V2)],
-                                 reducing:(K2,List[V2])=> (K2,V3)) extends Actor {
+                                 reducing:(K2,List[V2])=> (K2,V3),
+                                 nMap: Int,
+                                 nRed: Int) extends Actor {
 
 
-  var nmappers = 0 // adaptar per poder tenir menys mappers
+  var nmappers = nMap // adaptar per poder tenir menys mappers
   var mappersPendents = 0
-  var nreducers = 0 // adaptar per poder tenir menys reducers
+  var nreducers = nRed // adaptar per poder tenir menys reducers
   var reducersPendents = 0
 
   var num_files_mapper = 0
@@ -71,7 +73,7 @@ class MapReduce[K1,V1,K2,V2,V3](
 
       // farem un mapper per parella (K1,List[V1]) de l'input
 
-      nmappers = input.length
+      // nmappers = input.length
 
       println("Going to create MAPPERS!!")
 
@@ -104,7 +106,7 @@ class MapReduce[K1,V1,K2,V2,V3](
       // for(i<- 0 until nmappers) mappers(i) ! toMapper(input(i)._1, input(i)._2)
 
       // Necessitem controlar quant s'han acabat tots els mappers per poder llençar els reducers després...
-      mappersPendents = nmappers
+      mappersPendents = input.length
 
       println("All sent to Mappers, now start listening...")
 
@@ -124,8 +126,8 @@ class MapReduce[K1,V1,K2,V2,V3](
       {
         // creem els reducers, tants com entrades al diccionari; fixeu-vos de nou que fem servir context i fem el new
         // pel constructor del Reducer amb paràmetres
-        nreducers = dict.size
-        reducersPendents = nreducers // actualitzem els reducers pendents
+        // nreducers = dict.size
+        reducersPendents = dict.size // nreducers // actualitzem els reducers pendents
         val reducers = for (i <- 0 until nreducers) yield
           context.actorOf(Props(new Reducer(reducing)), "reducer"+i)
         // No cal anotar els tipus ja que els infereix de la funció reducing
@@ -133,8 +135,8 @@ class MapReduce[K1,V1,K2,V2,V3](
 
         // Ara enviem a cada reducer una clau de tipus V2 i una llista de valors de tipus K2. Les anotacions de tipus
         // no caldrien perquè ja sabem de quin tipus és dict, però ens ajuden a documentar.
-        for ((i,(key:K2, lvalue:List[V2])) <-  (0 until nreducers) zip dict)
-          reducers(i) ! toReducer(key, lvalue)
+        for (((key:K2, lvalue:List[V2]), i) <-  dict.zipWithIndex) reducers(i % nreducers) ! toReducer(key, lvalue)
+
         println("All sent to Reducers")
       }
 

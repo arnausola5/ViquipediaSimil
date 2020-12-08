@@ -1,12 +1,13 @@
 package main
 
 import java.io.File
-
 import akka.actor.{ActorSystem, PoisonPill, Props}
 import akka.pattern.ask
 import akka.util.Timeout
-import mapreduce._
+import mapreduce.ViquipediaParse.parseViquipediaFile
+import mapreduce.{ViquipediaParse, _}
 
+import scala.collection.immutable
 import scala.collection.immutable.ListMap
 import scala.concurrent.Await
 import scala.concurrent.duration._
@@ -73,11 +74,11 @@ object primeraPart extends App {
 
 object segonaPart extends App {
 
-  def prepararInput(n: Int): List[(String, List[String])] = {
-    val llistaFitxers = ProcessListStrings.getListOfFiles("viqui_files").take(n).map(f => (f.getName, ViquipediaParse.parseViquipediaFile(f.getPath).titol))
+  def llistaFitxers(n:Int): List[(String, String)] =
+    ProcessListStrings.getListOfFiles("viqui_files").take(n).map(f => (f.getName, ViquipediaParse.parseViquipediaFile(f.getPath).titol))
 
+  def prepararInputReferencies(llistaFitxers: List[(String, String)]): List[(String, List[String])] =
     for ((nomFitxer, _) <- llistaFitxers) yield (nomFitxer, llistaFitxers.map(t => t._2))
-  }
 
   // f té una referència de fitxer
   def mappingReferencies(fitxer: String, llistaTitolsFitxers: List[String]): List[(String, Int)] = {
@@ -88,10 +89,39 @@ object segonaPart extends App {
   def reducingReferencies(fitxer: String, llistaReferencies: List[Int]): (String, Int) =
     (fitxer, llistaReferencies.sum)
 
+  def prepararInputDf(n: Int): List[(String, List[String])] = {
+    val llistaFitxers = ProcessListStrings.getListOfFiles("viqui_files").take(n)
+    for(fitxer <- llistaFitxers) yield (fitxer.getPath, List[String]())
+  }
+
+  def mappingDf(fitxer: String, c: List[String]): List[(String, Int)] = {
+    val set = ViquipediaParse.parseViquipediaFile(fitxer).contingut.toSet.toList
+    for(mot <- set) yield (mot, 1)
+  }
+
+  def reducingDf(mot: String, aparences: List[Int]): (String, Int) =
+    (mot, aparences.sum)
+
+  def prepararInputNoRef(llistaFitxers: List[(String, String)]): List[(String, List[(String, String)])] =
+    for ((nomFitxer, _) <- llistaFitxers) yield (nomFitxer, llistaFitxers)
+
+  def mappingNoRef(fitxer: String, llistaTitolsFitxers: List[(String, String)]): List[(String, String)] = {
+    val f = ViquipediaParse.parseViquipediaFile("viqui_files/" + fitxer)
+    val referencies = f.refs
+    val titolFitxer = f.titol
+    for((nomf, titol) <- llistaTitolsFitxers if titol != titolFitxer && !referencies.exists(_.contains(titol))) yield { if(fitxer < nomf) (fitxer, nomf) else (nomf, fitxer) }
+  }
+
+  def reducingNoRef(fitxer1: String, fitxers2: List[String]): (String, List[String]) = {
+    (fitxer1, fitxers2.toSet.toList)
+  }
 
   // main
   val systema: ActorSystem = ActorSystem("sistema")
-  val paginesRellevants = systema.actorOf(Props(new MapReduce(prepararInput(5000),mappingReferencies,reducingReferencies, 10, 10)), name = "masterReferencies")
+
+  val fitxers = llistaFitxers(5000);
+
+  /* val paginesRellevants = systema.actorOf(Props(new MapReduce(prepararInputReferencies(fitxers),mappingReferencies,reducingReferencies, 10, 10)), name = "masterReferencies")
 
   implicit val timeout = Timeout(10000 seconds)
   var futureresResultPaginesRellevants = paginesRellevants ? mapreduce.MapReduceCompute()
@@ -100,10 +130,65 @@ object segonaPart extends App {
   val paginesRellevantsResult:Map[String,Int] = Await.result(futureresResultPaginesRellevants,Duration.Inf).asInstanceOf[Map[String,Int]]
 
   println("Results Obtained")
+  for(p <- paginesRellevantsResult) println(p) */
 
-  for(p <- paginesRellevantsResult) println(p)
+  val nDocs = 5000
+  val df = systema.actorOf(Props(new MapReduce(prepararInputDf(nDocs), mappingDf, reducingDf, 10, 10)), name = "masterDf")
+
+  implicit val timeout = Timeout(10000 seconds)
+  var futurDf = df ? mapreduce.MapReduceCompute()
+
+  println("Awaiting")
+  val resultatDf:Map[String, Int] = Await.result(futurDf, Duration.Inf).asInstanceOf[Map[String, Int]]
+
+  println("Results Obtained")
+  val idf:Map[String, Float] = resultatDf.map(m => (m._1, Math.log10(nDocs.toFloat/m._2.toFloat).toFloat))
+
+  // for(m <- idf) println(m)
+
+  val paginesNoRef = systema.actorOf(Props(new MapReduce(prepararInputNoRef(fitxers),mappingNoRef,reducingNoRef, 10, 10)), name = "masterNoRef")
+
+  // implicit val timeout = Timeout(10000 seconds)
+  var futurNoRef = paginesNoRef ? mapreduce.MapReduceCompute()
+
+  println("Awaiting")
+  val noRef:Map[String,List[String]] = Await.result(futurNoRef,Duration.Inf).asInstanceOf[Map[String,List[String]]]
+
+  println("Results Obtained")
+  var sum = 0
+  for(p <- noRef) sum = sum + p._2.size
+
+  println(sum)
 
   systema.terminate()
+
+  val fitxersDiferents = noRef.toList.map(t => t._1 :: t._2).flatten.toSet.toList
+
+  println("Fitxers diferents fets")
+
+  val tf_idf = (for(f <- fitxersDiferents) yield { val valor = ViquipediaParse.parseViquipediaFile("viqui_files/" + f).contingut.groupBy(m => m).map(m => (m._1, m._2.length.toFloat * idf.getOrElse(m._1, 0.toFloat)))
+                                                    (f, (valor, Math.sqrt(valor.map(m => m._2 * m._2).foldLeft(0.0)(_+_)).toFloat))}).toMap
+
+  println("Calcul tf_idf fet")
+
+  // for(p <- tf_idf) println(p)
+
+  def cosinesim(v1: (Map[String, Float], Float),  v2: (Map[String, Float], Float)): Float = {
+    var producteEscalar = 0.0
+    if(v1._1.size < v2._1.size)
+      for((mot, valor) <- v1._1) producteEscalar = producteEscalar + (valor * v2._1.getOrElse(mot, 0.toFloat))
+    else
+      for((mot, valor) <- v2._1) producteEscalar = producteEscalar + (valor * v1._1.getOrElse(mot, 0.toFloat))
+
+    (producteEscalar / (v1._2 * v2._2)).toFloat
+  }
+
+  val mapFitxers = fitxers.toMap
+  var vCos = null;
+  var setFitxers = null;
+  val similitud = for((f1, fitxers) <- noRef; f2 <- fitxers; vCos = cosinesim(tf_idf.getOrElse(f1, (Map(), 0.toFloat)), tf_idf.getOrElse(f2, (Map(), 0.toFloat))); if vCos > 0.5) yield ((mapFitxers.getOrElse(f1, "-"), mapFitxers.getOrElse(f2, "-")), vCos)
+
+  for(s <- similitud) println(s)
 }
 
 object fitxers extends App{

@@ -10,7 +10,7 @@ object ViquipediaParse {
 
   // Definim una case class per a retornar diversos valor, el titol de la pàgina, el contingut i les referències trobades.
   // El contingut, s'ha de polir més? treure refs? stopwords?...
-  case class ResultViquipediaParsing(titol: String, contingut: String, refs: List[String])
+  case class ResultViquipediaParsing(titol: String, contingut: List[String], refs: List[String])
 
   def testParse= this.parseViquipediaFile(exampleFilename)
 
@@ -23,8 +23,11 @@ object ViquipediaParse {
     // obtinc el titol
     val titol = (xmllegg \\ "title").text
 
+    val stopWords = ProcessListStrings.llegirFitxer("stopwordscatalanet.txt").split("\r\n").toList
+
     // obtinc el contingut de la pàgina
     val contingut = (xmllegg \\ "text").text
+    val contingutNet = contingut.replaceAll("[^a-zA-Z0-9ÀàÁáÈèÉéÍíÒòÓóÚú ]", " ").toLowerCase.split(" +").filterNot(stopWords.contains(_)).toList
 
     // identifico referències
     val ref = new Regex("\\[\\[[^\\]]*\\]\\]")
@@ -34,14 +37,15 @@ object ViquipediaParse {
     val refs = (ref findAllIn contingut).toList
 
     // elimino les que tenen :
-    val filteredRefs = refs.filterNot(_.contains(':'))
+    var filteredRefs = refs.filterNot(_.contains(':'))
 
     // caldrà eliminar-ne més?
+    filteredRefs = filteredRefs.filterNot(_.contains('#'))
 
     //for (r <- refs) println(r)
     //println(refs.length)
     //println(filteredRefs.length)
     xmlleg.close()
-    ResultViquipediaParsing(titol, contingut, filteredRefs)
+    ResultViquipediaParsing(titol, contingutNet, filteredRefs)
   }
 }

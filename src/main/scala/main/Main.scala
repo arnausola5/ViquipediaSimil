@@ -12,31 +12,83 @@ import scala.collection.immutable.ListMap
 import scala.concurrent.Await
 import scala.concurrent.duration._
 import scala.language.postfixOps
-
-// Tenim dos objectes executables
-// - tractaxml utilitza un "protoParser" per la viquipèdia i
-// exampleMapreduce usa el MapReduce
+import scala.io.StdIn.readLine
 
 object primeraPart extends App {
 
-  val aliceWonderland = ProcessListStrings.llegirFitxer("primeraPartPractica/pg11.txt")
-  /* val frequenciaParaules = freq(aliceWonderland)
-  println("Num de paraules: " + frequenciaParaules.foldLeft(0)(_+_._2))
-  println("Diferents: " + frequenciaParaules.length)
-  println(frequenciaParaules.sortWith(_._2>_._2).take(10))
+  println("OPCIONS")
+  println("--------------------------")
+  println("1. Freqüències de paraules")
+  println("2. Sense stop-words")
+  println("3. Distribució de paraules")
+  println("4. Ngrames")
+  println("5. Vector space model")
 
-  val stopWords = ProcessListStrings.llegirFitxer("primeraPartPractica/english-stop.txt").split("\r\n").toList
-  println(nonstopfreq(aliceWonderland, stopWords).sortWith(_._2>_._2).take(10)) */
+  print("\nEntra el número de la opció a executar: ")
+  val opcioFuncio = readLine().toInt
 
-  // paraulafreqfreq(aliceWonderland)
+  val fitxers = List("pg11.txt", "pg11-net.txt", "pg12.txt", "pg12-net.txt", "pg74.txt", "pg74-net.txt", "pg2500.txt", "pg2500-net.txt")
 
-  // val ngrams = ngrames(aliceWonderland, 3)
-  // println(ngrams.sortWith(_._2>_._2).take(10))
+  println("\nFITXERS")
+  println("--------------------------")
+  println("1. pg11.txt")
+  println("2. pg11-net.txt")
+  println("3. pg12.txt")
+  println("4. pg12-net.txt")
+  println("5. pg74.txt")
+  println("6. pg-74.txt")
+  println("7. pg2500.txt")
+  println("8. pg2500-net.txt")
 
-  val throughtLookingGlass = ProcessListStrings.llegirFitxer("primeraPartPractica/pg12.txt")
+  if(opcioFuncio >= 1 && opcioFuncio <= 4) {
+    print("\nEntra el número del fitxer a tractar: ")
+    val opcioFitxer = readLine().toInt
+    val fitxer = ProcessListStrings.llegirFitxer("primeraPartPractica/" + fitxers(opcioFitxer - 1))
 
-  println(cosinesim(aliceWonderland, throughtLookingGlass))
+    if (opcioFuncio == 1 || opcioFuncio == 2) {
+      var frequenciaParaules: List[(String, Int)] = null
 
+      if (opcioFuncio == 1)
+        frequenciaParaules = freq(fitxer)
+      else {
+        val stopWords = ProcessListStrings.llegirFitxer("primeraPartPractica/english-stop.txt").split("\r\n").toList
+        frequenciaParaules = nonstopfreq(fitxer, stopWords)
+      }
+
+      val numParaules = frequenciaParaules.foldLeft(0)(_ + _._2)
+
+      println("\nNum de Paraules: " + numParaules + "\t Diferents: " + frequenciaParaules.length)
+      printf("%-13s %-15s %-15s\n", "Paraules", "tOcurrències", "Freqüència")
+      println("----------------------------------------")
+      val solucio = frequenciaParaules.sortWith(_._2 > _._2).take(10)
+      for (mot <- solucio) printf("%-13s %-15s %.2f\n", mot._1, mot._2, mot._2.toFloat / numParaules * 100)
+    }
+    else if (opcioFuncio == 3)
+      paraulafreqfreq(fitxer)
+
+    else if (opcioFuncio == 4) {
+      print("\nEntra la mida dels ngrames: ")
+      val n = readLine().toInt
+
+      val frequenciaNgrames = ngrames(fitxer, n)
+      val solucio = frequenciaNgrames.sortWith(_._2 > _._2).take(10)
+      for (ngrama <- solucio) printf("\n%-25s %s", ngrama._1, ngrama._2)
+    }
+  }
+  else if(opcioFuncio == 5) {
+    print("\nEntra el número del 1er fitxer a comparar: ")
+    val opcioFitxer1 = readLine().toInt
+    print("Entra el número del 2n fitxer a comparar: ")
+    val opcioFitxer2 = readLine().toInt
+
+    val fitxer1 = ProcessListStrings.llegirFitxer("primeraPartPractica/" + fitxers(opcioFitxer1-1))
+    val fitxer2 = ProcessListStrings.llegirFitxer("primeraPartPractica/" + fitxers(opcioFitxer2-1))
+
+    val similitud = cosinesim(fitxer1, fitxer2)
+    printf("\nLa similitud entre " + fitxers(opcioFitxer1-1) + " i " + fitxers(opcioFitxer2-1) + " és de %.3f", similitud)
+  }
+
+  // FUNCIONS
 
   def freq(text: String):List[(String, Int)] =
     text.replaceAll("[^a-zA-Z ]", " ").split(" +").groupBy(m => m.toLowerCase()).map(m => (m._1, m._2.length)).toList
@@ -46,7 +98,9 @@ object primeraPart extends App {
 
   def paraulafreqfreq(text: String) = {
     val frequencies = freq(text).groupBy(_._2).map(n => (n._1, n._2.length)).toList.sortBy(_._1)
+    println("\nLes 10 freqüències més freqüents:")
     for(freq <- frequencies.take(10)) println(freq._2 + " paraules apareixen " + freq._1 + " vegades")
+    println("\nLes 5 freqüències menys freqüents:")
     for(freq <- frequencies.drop(frequencies.length-5)) println(freq._2 + " paraules apareixen " + freq._1 + " vegades")
   }
 
@@ -190,109 +244,5 @@ object segonaPart extends App {
 
   for(s <- similitud) println(s)
 }
-
-object fitxers extends App{
-  ProcessListStrings.mostrarTextDirectori("primeraPartPractica")
-}
-
-object tractaxml extends App {
-
-  val parseResult= ViquipediaParse.parseViquipediaFile()
-
-  parseResult match {
-    case ViquipediaParse.ResultViquipediaParsing(t,c,r) =>
-      println("TITOL: "+ t)
-      println("CONTINGUT: ")
-      println(c)
-      println("REFERENCIES: ")
-      println(r)
-  }
-}
-
-object exampleMapreduce extends App {
-
-  val nmappers = 1
-  val nreducers = 1
-  val f1 = new java.io.File("f1")
-  val f2 = new java.io.File("f2")
-  val f3 = new java.io.File("f3")
-  val f4 = new java.io.File("f4")
-  val f5 = new java.io.File("f5")
-  val f6 = new java.io.File("f6")
-  val f7 = new java.io.File("f7")
-  val f8 = new java.io.File("f8")
-
-  val fitxers: List[(File, List[String])] = List(
-    (f1, List("hola", "adeu", "per", "palotes", "hola","hola", "adeu", "pericos", "pal", "pal", "pal")),
-    (f2, List("hola", "adeu", "pericos", "pal", "pal", "pal")),
-    (f3, List("que", "tal", "anem", "be")),
-    (f4, List("be", "tal", "pericos", "pal")),
-    (f5, List("doncs", "si", "doncs", "quin", "pal", "doncs")),
-    (f6, List("quin", "hola", "vols", "dir")),
-    (f7, List("hola", "no", "pas", "adeu")),
-    (f8, List("ahh", "molt", "be", "adeu")))
-
-
-  val compres: List[(String,List[(String,Double, String)])] = List(
-    ("bonpeu",List(("pep", 10.5, "1/09/20"), ("pep", 13.5, "2/09/20"), ("joan", 30.3, "2/09/20"), ("marti", 1.5, "2/09/20"), ("pep", 10.5, "3/09/20"))),
-    ("sordi", List(("pep", 13.5, "4/09/20"), ("joan", 30.3, "3/09/20"), ("marti", 1.5, "1/09/20"), ("pep", 7.1, "5/09/20"), ("pep", 11.9, "6/09/20"))),
-    ("canbravo", List(("joan", 40.4, "5/09/20"), ("marti", 100.5, "5/09/20"), ("pep", 10.5, "7/09/20"), ("pep", 13.5, "8/09/20"), ("joan", 30.3, "7/09/20"), ("marti", 1.5, "6/09/20"))),
-    ("maldi", List(("pepa", 10.5, "3/09/20"), ("pepa", 13.5, "4/09/20"), ("joan", 30.3, "8/09/20"), ("marti", 0.5, "8/09/20"), ("pep", 72.1, "9/09/20"), ("mateu", 9.9, "4/09/20"), ("mateu", 40.4, "5/09/20"), ("mateu", 100.5, "6/09/20")))
-  )
-
-  // Creem el sistema d'actors
-  val systema: ActorSystem = ActorSystem("sistema")
-
-  // funcions per poder fer un word count
-  def mappingWC(file:File, words:List[String]) :List[(String, Int)] =
-        for (word <- words) yield (word, 1)
-
-
-  def reducingWC(word:String, nums:List[Int]):(String,Int) =
-        (word, nums.sum)
-
-
-  println("Creem l'actor MapReduce per fer el wordCount")
-  val wordcount = systema.actorOf(Props(new MapReduce(fitxers,mappingWC,reducingWC, 4, 4)), name = "mastercount")
-
-  // Els Futures necessiten que se'ls passi un temps d'espera, un pel future i un per esperar la resposta.
-  // La idea és esperar un temps limitat per tal que el codi no es quedés penjat ja que si us fixeu preguntar
-  // i esperar denota sincronització. En el nostre cas, al saber que el codi no pot avançar fins que tinguem
-  // el resultat del MapReduce, posem un temps llarg (100000s) al preguntar i una Duration.Inf a l'esperar la resposta.
-
-  // Enviem un missatge com a pregunta (? enlloc de !) per tal que inicii l'execució del MapReduce del wordcount.
-  //var futureresutltwordcount = wordcount.ask(mapreduce.MapReduceCompute())(100000 seconds)
-
-  implicit val timeout = Timeout(10000 seconds) // L'implicit permet fixar el timeout per a la pregunta que enviem al wordcount. És obligagori.
-  var futureresutltwordcount = wordcount ? mapreduce.MapReduceCompute()
-
-  println("Awaiting")
-  // En acabar el MapReduce ens envia un missatge amb el resultat
-  val wordCountResult:Map[String,Int] = Await.result(futureresutltwordcount,Duration.Inf).asInstanceOf[Map[String,Int]]
-
-
-  println("Results Obtained")
-  for(v<-wordCountResult) println(v)
-
-  // Fem el shutdown del actor system
-  println("shutdown")
-  systema.terminate()
-  println("ended shutdown")
-  // com tancar el sistema d'actors.
-
-  /*
-  EXERCICIS:
-
-  Useu el MapReduce per saber quant ha gastat cada persona.
-
-  Useu el MapReduce per saber qui ha fet la compra més cara a cada supermercat
-
-  Useu el MapReduce per saber quant s'ha gastat cada dia a cada supermercat.
-   */
-
-
-  println("tot enviat, esperant... a veure si triga en PACO")
-}
-
 
 

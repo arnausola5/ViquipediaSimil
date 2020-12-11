@@ -11,10 +11,12 @@ import scala.collection.immutable
 import scala.collection.immutable.ListMap
 import scala.concurrent.Await
 import scala.concurrent.duration._
-import scala.language.postfixOps
+import scala.language.{implicitConversions, postfixOps}
 import scala.io.StdIn.readLine
 
 object primeraPart extends App {
+
+  // main
 
   println("OPCIONS")
   println("--------------------------")
@@ -80,11 +82,13 @@ object primeraPart extends App {
     val opcioFitxer1 = readLine().toInt
     print("Entra el número del 2n fitxer a comparar: ")
     val opcioFitxer2 = readLine().toInt
+    print("\nEntra la mida del ngrama (1,2 o 3): ")
+    val midaNgrama = readLine().toInt
 
     val fitxer1 = ProcessListStrings.llegirFitxer("primeraPartPractica/" + fitxers(opcioFitxer1-1))
     val fitxer2 = ProcessListStrings.llegirFitxer("primeraPartPractica/" + fitxers(opcioFitxer2-1))
 
-    val similitud = cosinesim(fitxer1, fitxer2)
+    val similitud = cosinesim(fitxer1, fitxer2, midaNgrama)
     printf("\nLa similitud entre " + fitxers(opcioFitxer1-1) + " i " + fitxers(opcioFitxer2-1) + " és de %.3f", similitud)
   }
 
@@ -107,16 +111,24 @@ object primeraPart extends App {
   def ngrames(text: String, n: Int): List[(String, Int)] =
     text.replaceAll("[^a-zA-Z ]", " ").split(" +").sliding(n).map(n => n.mkString(" ")).toList.groupBy(m => m.toLowerCase()).map(m => (m._1, m._2.length)).toList
 
-  def cosinesim(text1: String, text2: String): Double = {
+  def cosinesim(text1: String, text2: String, n: Int): Double = {
     val stopWords = ProcessListStrings.llegirFitxer("primeraPartPractica/english-stop.txt").split("\r\n").toList
 
-    val freq1 = nonstopfreq(text1, stopWords).sortWith(_._2>_._2)
+    var freq1: List[(String, Int)] = null
+    var freq2: List[(String, Int)] = null
+    if(n == 1) {
+      freq1 = nonstopfreq(text1, stopWords).sortWith(_._2 > _._2)
+      freq2 = nonstopfreq(text2, stopWords).sortWith(_._2 > _._2)
+    } else {
+      freq1 = ngrames(text1, n).sortWith(_._2 > _._2)
+      freq2 = ngrames(text2, n).sortWith(_._2 > _._2)
+    }
+
     val freq1Normalitzat = freq1.map(m => (m._1, m._2.toFloat/freq1.take(1)(0)._2)).sortBy(_._1)
-    val freq2 = nonstopfreq(text2, stopWords).sortWith(_._2>_._2)
     val freq2Normalitzat = freq2.map(m => (m._1, m._2.toFloat/freq2.take(1)(0)._2)).sortBy(_._1)
     val freq2Map = freq2Normalitzat.toMap
 
-    var producteScalar = 0.0
+    var producteScalar = 0.toFloat
     for((mot, freq) <- freq1Normalitzat) producteScalar = producteScalar + (freq  * freq2Map.getOrElse(mot, 0.toFloat))
 
     val sumFreq1 = Math.sqrt(freq1Normalitzat.map(m => m._2 * m._2).foldLeft(0.0)(_+_))
@@ -128,37 +140,141 @@ object primeraPart extends App {
 
 object segonaPart extends App {
 
+  // main
+
+  println("OPCIONS")
+  println("--------------------------")
+  println("1. Pàgines rellevants")
+  println("2. Similitud")
+
+  print("\nEntra el número de la opció a executar: ")
+  val opcioFuncio = readLine().toInt
+  print("\nEntra el nombre de mappers i reducers: ")
+  val nMappersReducers = readLine().toInt
+  print("Entra el nombre de fitxers a tractar: ")
+  val nFitxers = readLine().toInt
+
+  val systema: ActorSystem = ActorSystem("sistema")
+  val fitxers = llistaFitxers(nFitxers);
+
+  if(opcioFuncio == 1) {
+    print("Entra el nombre de pàgines rellevants a mostrar: ")
+    val nPaginesRellevants = readLine().toInt
+
+    val paginesRellevants = systema.actorOf(Props(new MapReduce(prepararInputReferencies(fitxers), mappingReferencies, reducingReferencies, nMappersReducers, nMappersReducers)), name = "masterReferencies")
+
+    implicit val timeout = Timeout(10000 seconds)
+    var futurResultatPaginesRellevants = paginesRellevants ? mapreduce.MapReduceCompute()
+
+    println("Esperant Pàgines rellevants")
+    val resultatPaginesRellevants = Await.result(futurResultatPaginesRellevants, Duration.Inf).asInstanceOf[Map[String, Int]]
+
+    println("Resultat obtingut")
+    val resultatOrdenat = resultatPaginesRellevants.toSeq.sortWith(_._2 > _._2).take(nPaginesRellevants)
+    for(pagina <- resultatOrdenat) println(pagina._1 + " apareix " + pagina._2 + " cops")
+  }
+  else {
+    println("Entra el llindar de similitud: ")
+    val llindarSimilitud = readLine().toFloat
+
+    // Calculem el df per cada mot que apareix en algun dels fitxers
+    val df = systema.actorOf(Props(new MapReduce(prepararInputDf(nFitxers), mappingDf, reducingDf, nMappersReducers, nMappersReducers)), name = "masterDf")
+
+    implicit val timeout = Timeout(10000 seconds)
+    var futurResultatDf = df ? mapreduce.MapReduceCompute()
+
+    println("Esperant resultat df")
+    val resultatDf = Await.result(futurResultatDf, Duration.Inf).asInstanceOf[Map[String, Int]]
+
+    println("Resultat obtingut")
+    // Calculem el valor d'idf per cada mot
+    val idf: Map[String, Float] = resultatDf.map(m => (m._1, Math.log10(nFitxers.toFloat/m._2.toFloat).toFloat))
+
+    // Calculem les pàgines que no es referencien mútuament
+    val paginesNoRef = systema.actorOf(Props(new MapReduce(prepararInputNoRef(fitxers), mappingNoRef, reducingNoRef, nMappersReducers, nMappersReducers)), name = "masterNoRef")
+
+    var futurResultatNoRef = paginesNoRef ? mapreduce.MapReduceCompute()
+
+    println("Esperant resultat No es Referencien")
+    val resultatNoRef = Await.result(futurResultatNoRef, Duration.Inf).asInstanceOf[Map[String, List[String]]]
+
+    println("Resultat obtingut")
+
+    systema.terminate()
+
+    // Mirem tots els fitxers que tenim que no es referencien
+    val fitxersDiferents = resultatNoRef.toList.map(t => t._1 :: t._2).flatten.toSet.toList
+
+    println("S'han calculat els fitxers diferents que tenim")
+
+    // Calculem el tf_idf per cada fitxer
+    /*
+          Obrirem només un cop cada fitxer.
+          Per cada fitxer fet un set de tots els mots que té, i després calculem el seu tf per cada mot, contant el nombre d'ocurrències d'aquell mot en aquell fitxer.
+          Per calcular el tf_idf per aquell mot en concret dins d'aquest fitxer, fa falta multiplicar el tf per l'idf d'aquell mot, com que si el mot existeix pel fitxer que estem tractan també existirà al idf,
+            ja que hi ha tots els mots de tots els fitxers que estem tractant, busquem el valor d'idf al seu map i els multipliquem.
+          Finalment per cada fitxer, guardem el seu tf_idf i també aprofitem per calcular el denominador del cosinesim, ja que mai variarà.
+     */
+    val tf_idf = (for(f <- fitxersDiferents) yield {  val valor = ViquipediaParse.parseViquipediaFile("viqui_files/" + f).contingut.groupBy(m => m).map(m => (m._1, m._2.length.toFloat * idf.getOrElse(m._1, 0.toFloat)))
+                                                      (f, (valor, Math.sqrt(valor.map(m => m._2 * m._2).foldLeft(0.0)(_+_)).toFloat))}).toMap
+
+    println("tf_idf calculat")
+
+    val mapFitxers = fitxers.toMap
+    var valorCosinesim = null
+    /*
+          Generem les parelles de fitxers que no es referencien mútuament i calculem el seu cosinesim, utilitzant els valors calculats prèviament al tf_idf.
+          Finalment si superen el llindar de similitud, guardem la parella de fitxers amb el seu valor de similitud.
+     */
+    val similitud = for((f1, fitxers) <- resultatNoRef; f2 <- fitxers; valorCosinesim = cosinesim(tf_idf.getOrElse(f1, (Map(), 0.toFloat)), tf_idf.getOrElse(f2, (Map(), 0.toFloat))); if valorCosinesim > llindarSimilitud) yield ((mapFitxers.getOrElse(f1, "-"), mapFitxers.getOrElse(f2, "-")), valorCosinesim)
+
+    for(s <- similitud) println("La similitud entre " + s._1._1 + " i " + s._1._2 + " és de %.3f", s._2)
+  }
+
+  // FUNCIONS
+
+  // Agafem els n fitxers de la carpeta de "viqui_files", els retornem a una llista amb format de tupla, on el primer element és le nom del fitxer i el segon el seu títol
   def llistaFitxers(n: Int): List[(String, String)] =
     ProcessListStrings.getListOfFiles("viqui_files").take(n).map(f => (f.getName, ViquipediaParse.parseViquipediaFile(f.getPath).titol))
 
+  // Per mirar els fitxers que es referencien, l'entrada que passem és el una llista de tuples, on el primer element és el nom del fitxer i el segon la llista de tots els altres fitxers però amb el seu títol
   def prepararInputReferencies(llistaFitxers: List[(String, String)]): List[(String, List[String])] =
     for ((nomFitxer, _) <- llistaFitxers) yield (nomFitxer, llistaFitxers.map(t => t._2))
 
-  // f té una referència de fitxer
+  // Mirem si a la llista de referències del fitxer que arriba al mapping hi ha algun títol de tots els fitxers que estem considerant
+  // Generem una tupla per cada títol de la llista, amb el nombre de cops que apareix a les referències del fitxer
   def mappingReferencies(fitxer: String, llistaTitolsFitxers: List[String]): List[(String, Int)] = {
     val referencies = ViquipediaParse.parseViquipediaFile("viqui_files/" + fitxer).refs
     for(titol <- llistaTitolsFitxers) yield (titol, referencies.count(_.contains(titol)))
   }
 
+  // Per cada títol de fitxer, contem el nombre de cops que apareix com a referència en algun fitxer
   def reducingReferencies(titolFitxer: String, llistaReferencies: List[Int]): (String, Int) =
     (titolFitxer, llistaReferencies.sum)
 
+  // Generem una llista de tuples, on el primer element és el path de cada fitxer i el segon una llista buida
   def prepararInputDf(n: Int): List[(String, List[String])] = {
     val llistaFitxers = ProcessListStrings.getListOfFiles("viqui_files").take(n)
     for(fitxer <- llistaFitxers) yield (fitxer.getPath, List[String]())
   }
 
+  // Obrim cada fitxer, i per cada mot, generem un únic cop una tupla com a primer element el mot i com a segon un 1
   def mappingDf(pathFitxer: String, c: List[String]): List[(String, Int)] = {
     val setMots = ViquipediaParse.parseViquipediaFile(pathFitxer).contingut.toSet.toList
     for(mot <- setMots) yield (mot, 1)
   }
 
+  // Sumem per cada mot les ocurrències
   def reducingDf(mot: String, ocurrencies: List[Int]): (String, Int) =
     (mot, ocurrencies.sum)
 
+  // La funció per l'input del MapReduce dels que no es referencien mútuament
+  // És una llista de tuples, on el primer element és el nom del fitxer i el segon una llista de tuples, on el primer element és el nom del fitxer i el segon el títol
   def prepararInputNoRef(llistaFitxers: List[(String, String)]): List[(String, List[(String, String)])] =
     for ((nomFitxer, _) <- llistaFitxers) yield (nomFitxer, llistaFitxers)
 
+  // Generem tuples amb els dos noms de dos fitxers que no es referencien mútuament, aquestes tuples les ordenem de petit a gran, ja que d'aquesta manera al reducing podrem treure els repetits
+  // en cas de que dos fitxers no es referencin en cap de les dos direccions
   def mappingNoRef(nomFitxer: String, llistaTitolsFitxers: List[(String, String)]): List[(String, String)] = {
     val fitxer = ViquipediaParse.parseViquipediaFile("viqui_files/" + nomFitxer)
     val referencies = fitxer.refs
@@ -166,67 +282,12 @@ object segonaPart extends App {
     for((nomf, titol) <- llistaTitolsFitxers if titol != titolFitxer && !referencies.exists(_.contains(titol))) yield { if(nomFitxer < nomf) (nomFitxer, nomf) else (nomf, nomFitxer) }
   }
 
+  // Eliminem els repetits en cas de ser-hi
   def reducingNoRef(nomFitxer: String, nomFitxers: List[String]): (String, List[String]) = {
     (nomFitxer, nomFitxers.toSet.toList)
   }
 
-  // main
-  val systema: ActorSystem = ActorSystem("sistema")
-
-  val fitxers = llistaFitxers(5000);
-
-  /* val paginesRellevants = systema.actorOf(Props(new MapReduce(prepararInputReferencies(fitxers),mappingReferencies,reducingReferencies, 10, 10)), name = "masterReferencies")
-
-  implicit val timeout = Timeout(10000 seconds)
-  var futureresResultPaginesRellevants = paginesRellevants ? mapreduce.MapReduceCompute()
-
-  println("Awaiting")
-  val paginesRellevantsResult:Map[String,Int] = Await.result(futureresResultPaginesRellevants,Duration.Inf).asInstanceOf[Map[String,Int]]
-
-  println("Results Obtained")
-  for(p <- paginesRellevantsResult) println(p) */
-
-  val nDocs = 5000
-  val df = systema.actorOf(Props(new MapReduce(prepararInputDf(nDocs), mappingDf, reducingDf, 10, 10)), name = "masterDf")
-
-  implicit val timeout = Timeout(10000 seconds)
-  var futurDf = df ? mapreduce.MapReduceCompute()
-
-  println("Awaiting")
-  val resultatDf:Map[String, Int] = Await.result(futurDf, Duration.Inf).asInstanceOf[Map[String, Int]]
-
-  println("Results Obtained")
-  val idf:Map[String, Float] = resultatDf.map(m => (m._1, Math.log10(nDocs.toFloat/m._2.toFloat).toFloat))
-
-  // for(m <- idf) println(m)
-
-  val paginesNoRef = systema.actorOf(Props(new MapReduce(prepararInputNoRef(fitxers),mappingNoRef,reducingNoRef, 10, 10)), name = "masterNoRef")
-
-  // implicit val timeout = Timeout(10000 seconds)
-  var futurNoRef = paginesNoRef ? mapreduce.MapReduceCompute()
-
-  println("Awaiting")
-  val noRef:Map[String,List[String]] = Await.result(futurNoRef,Duration.Inf).asInstanceOf[Map[String,List[String]]]
-
-  println("Results Obtained")
-  var sum = 0
-  for(p <- noRef) sum = sum + p._2.size
-
-  println(sum)
-
-  systema.terminate()
-
-  val fitxersDiferents = noRef.toList.map(t => t._1 :: t._2).flatten.toSet.toList
-
-  println("Fitxers diferents fets")
-
-  val tf_idf = (for(f <- fitxersDiferents) yield { val valor = ViquipediaParse.parseViquipediaFile("viqui_files/" + f).contingut.groupBy(m => m).map(m => (m._1, m._2.length.toFloat * idf.getOrElse(m._1, 0.toFloat)))
-                                                    (f, (valor, Math.sqrt(valor.map(m => m._2 * m._2).foldLeft(0.0)(_+_)).toFloat))}).toMap
-
-  println("Calcul tf_idf fet")
-
-  // for(p <- tf_idf) println(p)
-
+  // Per calcular el cosinesim mirem quin dels dos fitxers és mes gran, ja que agafant el més petit serà més ràpid, perquè el nombre d'iteracions serà menor
   def cosinesim(v1: (Map[String, Float], Float),  v2: (Map[String, Float], Float)): Float = {
     var producteEscalar = 0.0
     if(v1._1.size < v2._1.size)
@@ -236,13 +297,6 @@ object segonaPart extends App {
 
     (producteEscalar / (v1._2 * v2._2)).toFloat
   }
-
-  val mapFitxers = fitxers.toMap
-  var vCos = null;
-  var setFitxers = null;
-  val similitud = for((f1, fitxers) <- noRef; f2 <- fitxers; vCos = cosinesim(tf_idf.getOrElse(f1, (Map(), 0.toFloat)), tf_idf.getOrElse(f2, (Map(), 0.toFloat))); if vCos > 0.5) yield ((mapFitxers.getOrElse(f1, "-"), mapFitxers.getOrElse(f2, "-")), vCos)
-
-  for(s <- similitud) println(s)
 }
 
 

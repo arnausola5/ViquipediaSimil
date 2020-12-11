@@ -82,7 +82,7 @@ object primeraPart extends App {
     val opcioFitxer1 = readLine().toInt
     print("Entra el número del 2n fitxer a comparar: ")
     val opcioFitxer2 = readLine().toInt
-    print("\nEntra la mida del ngrama (1,2 o 3): ")
+    print("\nEntra la mida del ngrama (1, 2 o 3): ")
     val midaNgrama = readLine().toInt
 
     val fitxer1 = ProcessListStrings.llegirFitxer("primeraPartPractica/" + fitxers(opcioFitxer1-1))
@@ -95,7 +95,9 @@ object primeraPart extends App {
   // FUNCIONS
 
   def freq(text: String):List[(String, Int)] =
-    text.replaceAll("[^a-zA-Z ]", " ").split(" +").groupBy(m => m.toLowerCase()).map(m => (m._1, m._2.length)).toList
+    text.replaceAll("[^a-zA-Z ]", " ").
+      split(" +").groupBy(m => m.toLowerCase()).
+      map(m => (m._1, m._2.length)).toList
 
   def nonstopfreq(text: String, stopWords: List[String]):List[(String, Int)] =
     text.replaceAll("[^a-zA-Z ]", " ").toLowerCase().split(" +").filterNot(stopWords.contains(_)).groupBy(m => m).map(m => (m._1, m._2.length)).toList
@@ -161,6 +163,8 @@ object segonaPart extends App {
     print("Entra el nombre de pàgines rellevants a mostrar: ")
     val nPaginesRellevants = readLine().toInt
 
+    val t = System.nanoTime()
+
     val paginesRellevants = systema.actorOf(Props(new MapReduce(prepararInputReferencies(fitxers), mappingReferencies, reducingReferencies, nMappersReducers, nMappersReducers)), name = "masterReferencies")
 
     implicit val timeout = Timeout(10000 seconds)
@@ -171,11 +175,17 @@ object segonaPart extends App {
 
     println("Resultat obtingut")
     val resultatOrdenat = resultatPaginesRellevants.toSeq.sortWith(_._2 > _._2).take(nPaginesRellevants)
+
+    val tempsExecucio = (System.nanoTime() - t)
+    println(tempsExecucio)
+
     for(pagina <- resultatOrdenat) println(pagina._1 + " apareix " + pagina._2 + " cops")
   }
   else {
-    println("Entra el llindar de similitud: ")
+    print("Entra el llindar de similitud: ")
     val llindarSimilitud = readLine().toFloat
+
+    val t = System.nanoTime()
 
     // Calculem el df per cada mot que apareix en algun dels fitxers
     val df = systema.actorOf(Props(new MapReduce(prepararInputDf(nFitxers), mappingDf, reducingDf, nMappersReducers, nMappersReducers)), name = "masterDf")
@@ -199,8 +209,6 @@ object segonaPart extends App {
     val resultatNoRef = Await.result(futurResultatNoRef, Duration.Inf).asInstanceOf[Map[String, List[String]]]
 
     println("Resultat obtingut")
-
-    systema.terminate()
 
     // Mirem tots els fitxers que tenim que no es referencien
     val fitxersDiferents = resultatNoRef.toList.map(t => t._1 :: t._2).flatten.toSet.toList
@@ -228,8 +236,13 @@ object segonaPart extends App {
      */
     val similitud = for((f1, fitxers) <- resultatNoRef; f2 <- fitxers; valorCosinesim = cosinesim(tf_idf.getOrElse(f1, (Map(), 0.toFloat)), tf_idf.getOrElse(f2, (Map(), 0.toFloat))); if valorCosinesim > llindarSimilitud) yield ((mapFitxers.getOrElse(f1, "-"), mapFitxers.getOrElse(f2, "-")), valorCosinesim)
 
-    for(s <- similitud) println("La similitud entre " + s._1._1 + " i " + s._1._2 + " és de %.3f", s._2)
+    val tempsExecucio = (System.nanoTime() - t)
+    println(tempsExecucio)
+
+    for(s <- similitud) printf("\nLa similitud entre " + s._1._1 + " i " + s._1._2 + " és de %.3f", s._2)
   }
+
+  systema.terminate()
 
   // FUNCIONS
 

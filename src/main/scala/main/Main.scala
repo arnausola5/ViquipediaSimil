@@ -128,7 +128,7 @@ object primeraPart extends App {
 
 object segonaPart extends App {
 
-  def llistaFitxers(n:Int): List[(String, String)] =
+  def llistaFitxers(n: Int): List[(String, String)] =
     ProcessListStrings.getListOfFiles("viqui_files").take(n).map(f => (f.getName, ViquipediaParse.parseViquipediaFile(f.getPath).titol))
 
   def prepararInputReferencies(llistaFitxers: List[(String, String)]): List[(String, List[String])] =
@@ -140,34 +140,34 @@ object segonaPart extends App {
     for(titol <- llistaTitolsFitxers) yield (titol, referencies.count(_.contains(titol)))
   }
 
-  def reducingReferencies(fitxer: String, llistaReferencies: List[Int]): (String, Int) =
-    (fitxer, llistaReferencies.sum)
+  def reducingReferencies(titolFitxer: String, llistaReferencies: List[Int]): (String, Int) =
+    (titolFitxer, llistaReferencies.sum)
 
   def prepararInputDf(n: Int): List[(String, List[String])] = {
     val llistaFitxers = ProcessListStrings.getListOfFiles("viqui_files").take(n)
     for(fitxer <- llistaFitxers) yield (fitxer.getPath, List[String]())
   }
 
-  def mappingDf(fitxer: String, c: List[String]): List[(String, Int)] = {
-    val set = ViquipediaParse.parseViquipediaFile(fitxer).contingut.toSet.toList
-    for(mot <- set) yield (mot, 1)
+  def mappingDf(pathFitxer: String, c: List[String]): List[(String, Int)] = {
+    val setMots = ViquipediaParse.parseViquipediaFile(pathFitxer).contingut.toSet.toList
+    for(mot <- setMots) yield (mot, 1)
   }
 
-  def reducingDf(mot: String, aparences: List[Int]): (String, Int) =
-    (mot, aparences.sum)
+  def reducingDf(mot: String, ocurrencies: List[Int]): (String, Int) =
+    (mot, ocurrencies.sum)
 
   def prepararInputNoRef(llistaFitxers: List[(String, String)]): List[(String, List[(String, String)])] =
     for ((nomFitxer, _) <- llistaFitxers) yield (nomFitxer, llistaFitxers)
 
-  def mappingNoRef(fitxer: String, llistaTitolsFitxers: List[(String, String)]): List[(String, String)] = {
-    val f = ViquipediaParse.parseViquipediaFile("viqui_files/" + fitxer)
-    val referencies = f.refs
-    val titolFitxer = f.titol
-    for((nomf, titol) <- llistaTitolsFitxers if titol != titolFitxer && !referencies.exists(_.contains(titol))) yield { if(fitxer < nomf) (fitxer, nomf) else (nomf, fitxer) }
+  def mappingNoRef(nomFitxer: String, llistaTitolsFitxers: List[(String, String)]): List[(String, String)] = {
+    val fitxer = ViquipediaParse.parseViquipediaFile("viqui_files/" + nomFitxer)
+    val referencies = fitxer.refs
+    val titolFitxer = fitxer.titol
+    for((nomf, titol) <- llistaTitolsFitxers if titol != titolFitxer && !referencies.exists(_.contains(titol))) yield { if(nomFitxer < nomf) (nomFitxer, nomf) else (nomf, nomFitxer) }
   }
 
-  def reducingNoRef(fitxer1: String, fitxers2: List[String]): (String, List[String]) = {
-    (fitxer1, fitxers2.toSet.toList)
+  def reducingNoRef(nomFitxer: String, nomFitxers: List[String]): (String, List[String]) = {
+    (nomFitxer, nomFitxers.toSet.toList)
   }
 
   // main
